@@ -1,0 +1,16 @@
+[tools]
+actionlint = "1.7.12"
+"aqua:bats-core/bats-core" = "1.14.0"
+jq = "1.8.2"
+shellcheck = "0.11.0"
+
+[env]
+MISE_PIN = 1
+
+[tasks.lint]
+description = "Lint the workflows and the shell scripts"
+run = ["actionlint", "shellcheck scripts/*.sh tests/*.bash tests/*.bats"]
+
+[tasks.test]
+description = "Run the bats tests against the mock server"
+run = "bats tests"
