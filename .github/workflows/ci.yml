@@ -1,0 +1,87 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: mise
+        run: echo "version=$(cat .mise-version)" >> "$GITHUB_OUTPUT"
+
+      - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+        with:
+          version: ${{ steps.mise.outputs.version }}
+          cache: true
+
+      - run: mise run lint
+
+      - run: mise run test
+
+  # This job runs the action itself, with a real OIDC token, against the mock server. GitHub does
+  # not give an OIDC token to a workflow run for a pull request from a fork. For this reason, the
+  # job runs for a pull request from this repository only.
+  action:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Start the mock server
+        id: mock
+        env:
+          MOCK_PORT_FILE: ${{ runner.temp }}/mock.port
+          MOCK_LOG: ${{ runner.temp }}/mock.log
+        run: |
+          nohup python3 tests/mock/server.py > "$RUNNER_TEMP/mock.out" 2>&1 &
+          for _ in $(seq 1 50); do
+            test -s "$MOCK_PORT_FILE" && break
+            sleep 0.1
+          done
+          test -s "$MOCK_PORT_FILE"
+          echo "url=http://127.0.0.1:$(cat "$MOCK_PORT_FILE")" >> "$GITHUB_OUTPUT"
+
+      - id: login
+        uses: ./
+        with:
+          openbao-url: ${{ steps.mock.outputs.url }}
+          rancher-url: https://rancher.example.com
+          cluster: c-m-mock
+          project: p-mock
+          role: project-member
+          statement: ci
+          namespace: mock
+
+      - name: Check the outputs, the kubeconfig, and the requests
+        env:
+          URL: ${{ steps.mock.outputs.url }}
+          KUBECONFIG_OUTPUT: ${{ steps.login.outputs.kubeconfig }}
+          SERVER: ${{ steps.login.outputs.server }}
+          EXPIRES_IN: ${{ steps.login.outputs.expires-in }}
+          MOCK_LOG: ${{ runner.temp }}/mock.log
+        run: |
+          test "$KUBECONFIG" = "$KUBECONFIG_OUTPUT"
+          test "$SERVER" = https://rancher.example.com/k8s/clusters/c-m-mock
+          test "$EXPIRES_IN" = 900
+          test "$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')" = "$SERVER"
+          test "$(kubectl config view --minify -o jsonpath='{.contexts[0].context.namespace}')" = mock
+          test "$(sed -n 1p "$MOCK_LOG" | jq -r .body.role)" = c-m-mock_p-mock_ci
+          test "$(sed -n 1p "$MOCK_LOG" | jq -r .jwt_claims.aud)" = "$URL"
+          test "$(sed -n 1p "$MOCK_LOG" | jq -r .jwt_claims.repository)" = "$GITHUB_REPOSITORY"
+          test "$(sed -n 2p "$MOCK_LOG" | jq -r .body.kubernetes_namespace)" = drover-c-m-mock-p-mock

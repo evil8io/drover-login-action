@@ -1,0 +1,38 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "jdx/mise",
+      "description": "Extracts the version of mise from .mise-version.",
+      "extractVersionTemplate": "^v(?<version>.+)$",
+      "managerFilePatterns": [
+        "/^\\.mise-version$/"
+      ],
+      "matchStrings": [
+        "^(?<currentValue>\\d+\\.\\d+\\.\\d+)\\s*$"
+      ],
+      "versioningTemplate": "semver"
+    }
+  ],
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigestsToSemver",
+    "group:allNonMajor"
+  ],
+  "labels": [
+    "renovate"
+  ],
+  "packageRules": [
+    {
+      "description": "Puts mise in its own group. Renovate waits 3 days after a mise release before the update.",
+      "groupName": "mise",
+      "matchDepNames": [
+        "jdx/mise"
+      ],
+      "minimumReleaseAge": "3 days"
+    }
+  ],
+  "rebaseWhen": "behind-base-branch"
+}

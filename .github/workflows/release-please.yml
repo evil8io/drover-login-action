@@ -1,0 +1,33 @@
+name: release-please
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency: release-please
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # Moves the tag v<major>, for example v0, to the release commit, so that a workflow can use the
+      # action as @v<major>.
+      - if: steps.release.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAJOR: ${{ steps.release.outputs.major }}
+          SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/v$MAJOR" -f sha="$SHA" -F force=true \
+            || gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/v$MAJOR" -f sha="$SHA"

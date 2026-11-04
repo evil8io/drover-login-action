@@ -1,0 +1,88 @@
+---
+name: drover login
+description: >-
+  Log in to OpenBao with the GitHub OIDC token of the workflow. Write a kubeconfig with a short-lived token
+  of a project ServiceAccount of a Rancher cluster.
+author: evil8io
+
+branding:
+  icon: log-in
+  color: green
+
+inputs:
+  openbao-url:
+    description: The URL of OpenBao, for example `https://rancher-tokens.example.com`.
+    required: true
+  rancher-url:
+    description: The URL of Rancher, for example `https://rancher.example.com`.
+    required: true
+  cluster:
+    description: The ID of the Rancher cluster, for example `c-m-4x2kq7bd`.
+    required: true
+  project:
+    description: The ID of the Rancher project, for example `p-abc12`.
+    required: true
+  role:
+    description: The project role of the token. The value is `project-owner`, `project-member`, or `read-only`.
+    required: true
+  statement:
+    description: The name of the statement in the trust annotation of the project.
+    required: true
+  issuer:
+    description: The name of the JWT issuer in OpenBao.
+    required: false
+    default: github
+  audience:
+    description: >-
+      The audience of the OIDC token. The default is the OpenBao URL, the default audience of the login
+      roles of the drover chart.
+    required: false
+  ttl:
+    description: >-
+      The lifetime of the token, for example `30m`. With an empty value, OpenBao uses the default lifetime
+      of the token role.
+    required: false
+  namespace:
+    description: The namespace of the kubeconfig context.
+    required: false
+  kubeconfig:
+    description: The absolute path of the kubeconfig. The default is a new file under `RUNNER_TEMP`.
+    required: false
+  export-kubeconfig:
+    description: With `true`, the later steps of the job get `KUBECONFIG` with the path of the kubeconfig.
+    required: false
+    default: "true"
+
+outputs:
+  kubeconfig:
+    description: The path of the kubeconfig.
+    value: ${{ steps.login.outputs.kubeconfig }}
+  server:
+    description: The URL of the cluster API through Rancher.
+    value: ${{ steps.login.outputs.server }}
+  token:
+    description: The ServiceAccount token. The runner masks it in the log.
+    value: ${{ steps.login.outputs.token }}
+  expires-in:
+    description: The lifetime of the token in seconds.
+    value: ${{ steps.login.outputs.expires-in }}
+
+runs:
+  using: composite
+  steps:
+    - id: login
+      shell: bash
+      env:
+        DROVER_OPENBAO_URL: ${{ inputs.openbao-url }}
+        DROVER_RANCHER_URL: ${{ inputs.rancher-url }}
+        DROVER_CLUSTER: ${{ inputs.cluster }}
+        DROVER_PROJECT: ${{ inputs.project }}
+        DROVER_ROLE: ${{ inputs.role }}
+        DROVER_STATEMENT: ${{ inputs.statement }}
+        DROVER_ISSUER: ${{ inputs.issuer }}
+        DROVER_AUDIENCE: ${{ inputs.audience }}
+        DROVER_TTL: ${{ inputs.ttl }}
+        DROVER_NAMESPACE: ${{ inputs.namespace }}
+        DROVER_KUBECONFIG: ${{ inputs.kubeconfig }}
+        DROVER_EXPORT_KUBECONFIG: ${{ inputs.export-kubeconfig }}
+      run: "$GITHUB_ACTION_PATH/scripts/login.sh"
