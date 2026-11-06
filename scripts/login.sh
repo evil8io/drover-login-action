@@ -50,6 +50,11 @@ ttl="${DROVER_TTL:-}"
 namespace="${DROVER_NAMESPACE:-}"
 kubeconfig="${DROVER_KUBECONFIG:-}"
 export_kubeconfig="${DROVER_EXPORT_KUBECONFIG:-true}"
+ca_certificate="${DROVER_CA_CERTIFICATE:-}"
+ca_certificate="${ca_certificate//$'\r'/}"
+ca_certificate="${ca_certificate#"${ca_certificate%%[![:space:]]*}"}"
+ca_certificate="${ca_certificate%"${ca_certificate##*[![:space:]]}"}"
+insecure_skip_tls_verify="${DROVER_INSECURE_SKIP_TLS_VERIFY:-false}"
 
 check openbao-url "$openbao_url" "$url_pattern" 'an https URL with a host and without a path'
 check rancher-url "$rancher_url" "$url_pattern" 'an https URL with a host and without a path'
@@ -63,7 +68,13 @@ check ttl "$ttl" '^([0-9]+[smh]?)?$' 'a duration, for example 30m, or empty'
 check namespace "$namespace" '^([a-z0-9]([-a-z0-9]*[a-z0-9])?)?$' 'a namespace name, or empty'
 check kubeconfig "$kubeconfig" '^(/[^[:cntrl:]]*)?$' 'an absolute path, or empty'
 check export-kubeconfig "$export_kubeconfig" '^(true|false)$' 'true or false'
+pem_block="-----BEGIN CERTIFICATE-----"$'\n'"([A-Za-z0-9+/=]+"$'\n'")+-----END CERTIFICATE-----"
+check ca-certificate "$ca_certificate" "^(${pem_block}("$'\n'"+${pem_block})*)?$" 'one or more PEM certificates, or empty'
+check insecure-skip-tls-verify "$insecure_skip_tls_verify" '^(true|false)$' 'true or false'
 [[ -d "$kubeconfig" ]] && fail "The input kubeconfig is a directory."
+if [[ -n "$ca_certificate" && "$insecure_skip_tls_verify" == true ]]; then
+  fail "Set the input ca-certificate or the input insecure-skip-tls-verify. Do not set both, because kubectl does not accept a kubeconfig with both."
+fi
 
 if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]]; then
   fail "The job cannot request an OIDC token. Give the job the permission id-token: write."
@@ -104,6 +115,14 @@ errors() {
     "$work/$1.json" 2>/dev/null || true
 }
 
+openbao_tls=""
+if [[ -n "$ca_certificate" ]]; then
+  printf '%s\n' "$ca_certificate" > "$work/ca.pem"
+  openbao_tls="cacert = \"${work}/ca.pem\""
+elif [[ "$insecure_skip_tls_verify" == true ]]; then
+  openbao_tls="insecure"
+fi
+
 separator='&'
 [[ "$ACTIONS_ID_TOKEN_REQUEST_URL" == *\?* ]] || separator='?'
 encoded_audience=$(jq -rn --arg audience "$audience" '$audience | @uri')
@@ -126,6 +145,7 @@ url = "${openbao_url}/v1/auth/jwt/${issuer}/login"
 request = "POST"
 header = "Content-Type: application/json"
 data-binary = "@${work}/login.body"
+${openbao_tls}
 EOF
 status=$(request login) || fail "The login request to $openbao_url failed (curl exit code $?)."
 [[ "$status" == 200 ]] \
@@ -145,6 +165,7 @@ request = "POST"
 header = "Content-Type: application/json"
 header = "X-Vault-Token: ${client_token}"
 data-binary = "@${work}/creds.body"
+${openbao_tls}
 EOF
 status=$(request creds) || fail "The token request to $openbao_url failed (curl exit code $?)."
 [[ "$status" == 200 ]] \
@@ -163,10 +184,16 @@ fi
 kubeconfig_dir=$(dirname "$kubeconfig")
 mkdir -p "$kubeconfig_dir"
 new_kubeconfig=$(mktemp "$kubeconfig_dir/.kubeconfig.XXXXXX")
-jq --arg cluster "$cluster" --arg server "$server" --arg user "${project}-${role}" --arg namespace "$namespace" '{
+jq --arg cluster "$cluster" --arg server "$server" --arg user "${project}-${role}" --arg namespace "$namespace" \
+  --arg ca "$ca_certificate" --arg insecure "$insecure_skip_tls_verify" '{
   apiVersion: "v1",
   kind: "Config",
-  clusters: [{name: $cluster, cluster: {server: $server}}],
+  clusters: [{
+    name: $cluster,
+    cluster: ({server: $server}
+      + (if $ca == "" then {} else {"certificate-authority-data": ($ca | @base64)} end)
+      + (if $insecure == "true" then {"insecure-skip-tls-verify": true} else {} end))
+  }],
   users: [{name: $user, user: {token: .data.service_account_token}}],
   contexts: [{
     name: $cluster,

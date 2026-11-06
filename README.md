@@ -93,6 +93,10 @@ The format of the annotation is in the [README of the drover chart](https://gith
 | `namespace` | no | | The namespace of the kubeconfig context. |
 | `kubeconfig` | no | a new file under `RUNNER_TEMP` | The absolute path of the kubeconfig. |
 | `export-kubeconfig` | no | `true` | With `true`, the action sets `KUBECONFIG` to the path of the kubeconfig for the later steps of the job. |
+| `ca-certificate` | no | | One or more PEM certificates of the private CA that signed the TLS certificates of OpenBao and Rancher. curl uses the certificates for the requests to OpenBao. The action writes the certificates into the kubeconfig for Rancher. |
+| `insecure-skip-tls-verify` | no | `false` | With `true`, curl does not verify the TLS certificate of OpenBao. The action also writes `insecure-skip-tls-verify: true` into the kubeconfig, so kubectl and helm do not verify the TLS certificate of Rancher. A host between the runner and OpenBao or Rancher can then read the tokens. Do not set it together with `ca-certificate`, because kubectl and helm refuse a kubeconfig with both. |
+
+The action does not use `ca-certificate` or `insecure-skip-tls-verify` for the OIDC token request to GitHub.
 
 The cluster ID and the project ID are in the output of `kubectl get projects.management.cattle.io --all-namespaces` in the Rancher management cluster. They are also in the trust status annotation of the project, `managed.drover.evil8.io/trust-policy-status`, in the `login.role` of each ready statement: `<cluster ID>_<project ID>_<statement>`.
 

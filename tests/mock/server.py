@@ -10,12 +10,16 @@ reads at each request. The document can contain these keys:
 - oidc_status, login_status, creds_status: the HTTP status of each endpoint. Default: 200.
   With another status, the endpoint returns an error document.
 - oidc_body: when the key is set, the OIDC endpoint returns this text as HTML with the status 200.
+
+When the variables MOCK_TLS_CERT and MOCK_TLS_KEY contain the paths of a PEM certificate and its
+key, the server answers requests over HTTPS instead of HTTP.
 """
 
 import base64
 import json
 import os
 import re
+import ssl
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlsplit
@@ -181,6 +185,10 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     server = HTTPServer(("127.0.0.1", 0), Handler)
+    if os.environ.get("MOCK_TLS_CERT"):
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(os.environ["MOCK_TLS_CERT"], os.environ["MOCK_TLS_KEY"])
+        server.socket = context.wrap_socket(server.socket, server_side=True)
     with open(os.environ["MOCK_PORT_FILE"], "w", encoding="utf-8") as port_file:
         port_file.write(str(server.server_address[1]))
     try:

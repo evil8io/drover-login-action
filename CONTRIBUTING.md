@@ -12,7 +12,7 @@ tests/mock/server.py    a mock of the GitHub OIDC endpoint and of OpenBao
 
 ## Tools
 
-Mise installs the tool versions in `mise.toml`. Run `mise install`. The tests also need `python3` for the mock server, `curl`, and the GNU coreutils.
+Mise installs the tool versions in `mise.toml`. Run `mise install`. The tests also need `python3` for the mock server, `curl`, `openssl` for the test certificates, and the GNU coreutils.
 
 ## Checks
 
