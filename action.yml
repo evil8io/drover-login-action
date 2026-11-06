@@ -54,8 +54,9 @@ inputs:
     default: "true"
   ca-certificate:
     description: >-
-      The PEM certificate of the private CA that signed the TLS certificates of OpenBao and Rancher. curl
-      uses it for the requests to OpenBao. The action writes it into the kubeconfig for Rancher.
+      One or more PEM certificates of the private CA that signed the TLS certificates of OpenBao and
+      Rancher. curl uses the certificates for the requests to OpenBao. The action writes the certificates
+      into the kubeconfig for Rancher.
     required: false
   insecure-skip-tls-verify:
     description: >-

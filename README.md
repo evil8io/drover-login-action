@@ -93,8 +93,8 @@ The format of the annotation is in the [README of the drover chart](https://gith
 | `namespace` | no | | The namespace of the kubeconfig context. |
 | `kubeconfig` | no | a new file under `RUNNER_TEMP` | The absolute path of the kubeconfig. |
 | `export-kubeconfig` | no | `true` | With `true`, the action sets `KUBECONFIG` to the path of the kubeconfig for the later steps of the job. |
-| `ca-certificate` | no | | The PEM certificate of the private CA that signed the TLS certificates of OpenBao and Rancher. curl uses the certificate for the requests to OpenBao. The action writes the certificate into the kubeconfig for Rancher. |
-| `insecure-skip-tls-verify` | no | `false` | With `true`, curl and kubectl do not verify the TLS certificates of OpenBao and Rancher. A host between the runner and OpenBao can then read the tokens. Do not set it together with `ca-certificate`. |
+| `ca-certificate` | no | | One or more PEM certificates of the private CA that signed the TLS certificates of OpenBao and Rancher. curl uses the certificates for the requests to OpenBao. The action writes the certificates into the kubeconfig for Rancher. |
+| `insecure-skip-tls-verify` | no | `false` | With `true`, curl and kubectl do not verify the TLS certificates of OpenBao and Rancher. A host between the runner and OpenBao or Rancher can then read the tokens. Do not set it together with `ca-certificate`. |
 
 The action does not use `ca-certificate` or `insecure-skip-tls-verify` for the OIDC token request to GitHub.
 

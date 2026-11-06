@@ -51,6 +51,9 @@ namespace="${DROVER_NAMESPACE:-}"
 kubeconfig="${DROVER_KUBECONFIG:-}"
 export_kubeconfig="${DROVER_EXPORT_KUBECONFIG:-true}"
 ca_certificate="${DROVER_CA_CERTIFICATE:-}"
+ca_certificate="${ca_certificate//$'\r'/}"
+ca_certificate="${ca_certificate#"${ca_certificate%%[![:space:]]*}"}"
+ca_certificate="${ca_certificate%"${ca_certificate##*[![:space:]]}"}"
 insecure_skip_tls_verify="${DROVER_INSECURE_SKIP_TLS_VERIFY:-false}"
 
 check openbao-url "$openbao_url" "$url_pattern" 'an https URL with a host and without a path'
@@ -65,8 +68,8 @@ check ttl "$ttl" '^([0-9]+[smh]?)?$' 'a duration, for example 30m, or empty'
 check namespace "$namespace" '^([a-z0-9]([-a-z0-9]*[a-z0-9])?)?$' 'a namespace name, or empty'
 check kubeconfig "$kubeconfig" '^(/[^[:cntrl:]]*)?$' 'an absolute path, or empty'
 check export-kubeconfig "$export_kubeconfig" '^(true|false)$' 'true or false'
-check ca-certificate "$ca_certificate" '^(-----BEGIN CERTIFICATE-----.+-----END CERTIFICATE-----[[:space:]]*)?$' \
-  'one or more PEM certificates, or empty'
+pem_block="-----BEGIN CERTIFICATE-----"$'\n'"([A-Za-z0-9+/=]+"$'\n'")+-----END CERTIFICATE-----"
+check ca-certificate "$ca_certificate" "^(${pem_block}("$'\n'"+${pem_block})*)?$" 'one or more PEM certificates, or empty'
 check insecure-skip-tls-verify "$insecure_skip_tls_verify" '^(true|false)$' 'true or false'
 [[ -d "$kubeconfig" ]] && fail "The input kubeconfig is a directory."
 if [[ -n "$ca_certificate" && "$insecure_skip_tls_verify" == true ]]; then

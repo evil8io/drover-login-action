@@ -101,6 +101,35 @@ teardown() {
   [ "$(jq -r '.clusters[0].cluster | has("insecure-skip-tls-verify")' "$kubeconfig")" = "false" ]
 }
 
+@test "removes the CR characters and the white space around ca-certificate" {
+  start_tls_mock
+  export DROVER_OPENBAO_URL="$MOCK_TLS_URL"
+  DROVER_CA_CERTIFICATE=$'\n  '"$(sed 's/$/\r/' "$TLS_DIR/ca.pem")"$'\r\n\n'
+  export DROVER_CA_CERTIFICATE
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(request_count)" -eq 3 ]
+  kubeconfig=$(output_value kubeconfig)
+  [ "$(jq -r '.clusters[0].cluster["certificate-authority-data"]' "$kubeconfig" | base64 -d)" = "$(cat "$TLS_DIR/ca.pem")" ]
+}
+
+@test "accepts a ca-certificate with two certificates" {
+  start_tls_mock
+  export DROVER_OPENBAO_URL="$MOCK_TLS_URL"
+  DROVER_CA_CERTIFICATE=$(cat "$TLS_DIR/server.pem" "$TLS_DIR/ca.pem")
+  export DROVER_CA_CERTIFICATE
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(request_count)" -eq 3 ]
+}
+
+@test "treats a ca-certificate of only white space as empty" {
+  export DROVER_CA_CERTIFICATE=$'\n \n'
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '.clusters[0].cluster | keys' "$(output_value kubeconfig)")" = '["server"]' ]
+}
+
 @test "does not verify the certificate of OpenBao with insecure-skip-tls-verify, and writes the flag into the kubeconfig" {
   start_tls_mock
   export DROVER_OPENBAO_URL="$MOCK_TLS_URL"
@@ -109,7 +138,7 @@ teardown() {
   [ "$status" -eq 0 ]
   [ "$(request_count)" -eq 3 ]
   kubeconfig=$(output_value kubeconfig)
-  [ "$(jq -r '.clusters[0].cluster["insecure-skip-tls-verify"]' "$kubeconfig")" = "true" ]
+  jq -e '.clusters[0].cluster["insecure-skip-tls-verify"] == true' "$kubeconfig"
   [ "$(jq -r '.clusters[0].cluster | has("certificate-authority-data")' "$kubeconfig")" = "false" ]
 }
 
@@ -155,7 +184,12 @@ teardown() {
   [ "$status" -eq 1 ]
   grep -q "^::error::The input ca-certificate is not valid. The value must be one or more PEM certificates, or empty.$" <<<"$output"
 
-  DROVER_CA_CERTIFICATE="$(cat "$TLS_DIR/ca.pem" "$TLS_DIR/server.key")"
+  DROVER_CA_CERTIFICATE="$(cat "$TLS_DIR/ca.pem" "$TLS_DIR/server.key" "$TLS_DIR/ca.pem")"
+  run "$SCRIPT"
+  [ "$status" -eq 1 ]
+  grep -q "^::error::The input ca-certificate is not valid." <<<"$output"
+
+  DROVER_CA_CERTIFICATE="$(tr '\n' ' ' < "$TLS_DIR/ca.pem")"
   run "$SCRIPT"
   [ "$status" -eq 1 ]
   grep -q "^::error::The input ca-certificate is not valid." <<<"$output"

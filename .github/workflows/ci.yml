@@ -85,3 +85,62 @@ jobs:
           test "$(sed -n 1p "$MOCK_LOG" | jq -r .jwt_claims.aud)" = "$URL"
           test "$(sed -n 1p "$MOCK_LOG" | jq -r .jwt_claims.repository)" = "$GITHUB_REPOSITORY"
           test "$(sed -n 2p "$MOCK_LOG" | jq -r .body.kubernetes_namespace)" = drover-c-m-mock-p-mock
+
+      # The second mock server answers HTTPS as OpenBao and as Rancher, with a certificate of a test CA.
+      - name: Start the TLS mock server
+        id: tls
+        env:
+          BATS_FILE_TMPDIR: ${{ runner.temp }}
+          MOCK_PORT_FILE: ${{ runner.temp }}/mock-tls.port
+          MOCK_LOG: ${{ runner.temp }}/mock-tls.log
+        run: |
+          source tests/helpers.bash
+          make_certificates
+          MOCK_TLS_CERT="$TLS_DIR/server.pem" MOCK_TLS_KEY="$TLS_DIR/server.key" \
+            nohup python3 tests/mock/server.py > "$RUNNER_TEMP/mock-tls.out" 2>&1 &
+          for _ in $(seq 1 50); do
+            test -s "$MOCK_PORT_FILE" && break
+            sleep 0.1
+          done
+          test -s "$MOCK_PORT_FILE"
+          echo "url=https://127.0.0.1:$(cat "$MOCK_PORT_FILE")" >> "$GITHUB_OUTPUT"
+          {
+            echo "ca<<CA_EOF"
+            cat "$TLS_DIR/ca.pem"
+            echo "CA_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./
+        with:
+          openbao-url: ${{ steps.tls.outputs.url }}
+          rancher-url: ${{ steps.tls.outputs.url }}
+          cluster: c-m-mock
+          project: p-mock
+          role: project-member
+          statement: ci
+          kubeconfig: ${{ runner.temp }}/ca/kubeconfig
+          export-kubeconfig: "false"
+          ca-certificate: ${{ steps.tls.outputs.ca }}
+
+      - uses: ./
+        with:
+          openbao-url: ${{ steps.tls.outputs.url }}
+          rancher-url: ${{ steps.tls.outputs.url }}
+          cluster: c-m-mock
+          project: p-mock
+          role: project-member
+          statement: ci
+          kubeconfig: ${{ runner.temp }}/insecure/kubeconfig
+          export-kubeconfig: "false"
+          insecure-skip-tls-verify: "true"
+
+      # The mock answers HTTP 404 to a request of kubectl. kubectl reports NotFound only after a TLS handshake.
+      - name: Check the TLS handshake of kubectl with each kubeconfig
+        run: |
+          for name in ca insecure; do
+            if output=$(kubectl --kubeconfig "$RUNNER_TEMP/$name/kubeconfig" get --raw /version 2>&1); then
+              echo "::error::kubectl got a success response from the mock with the kubeconfig $name."
+              exit 1
+            fi
+            grep -q NotFound <<<"$output" || { echo "::error::kubectl with the kubeconfig $name: $output"; exit 1; }
+          done
