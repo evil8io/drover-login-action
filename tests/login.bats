@@ -5,6 +5,10 @@
 
 load helpers
 
+setup_file() {
+  make_certificates
+}
+
 setup() {
   start_mock
   login_env
@@ -46,6 +50,7 @@ teardown() {
   [ "$(cat "$GITHUB_ENV")" = "KUBECONFIG=$kubeconfig" ]
   [ "$(stat -c %a "$kubeconfig")" = "600" ]
   [ "$(jq -r '.clusters[0].cluster.server' "$kubeconfig")" = "https://rancher.example.com/k8s/clusters/c-m-4x2kq7bd" ]
+  [ "$(jq -c '.clusters[0].cluster | keys' "$kubeconfig")" = '["server"]' ]
   [ "$(jq -r '.users[0].user.token' "$kubeconfig")" = "$SA_TOKEN" ]
   [ "$(jq -r '.contexts[0].context.user' "$kubeconfig")" = "p-abc12-project-member" ]
   [ "$(jq -r '.contexts[0].context | has("namespace")' "$kubeconfig")" = "false" ]
@@ -79,6 +84,88 @@ teardown() {
   [ "$(output_value kubeconfig)" = "$BATS_TEST_TMPDIR/custom/kubeconfig" ]
   [ "$(jq -r '.contexts[0].context.namespace' "$BATS_TEST_TMPDIR/custom/kubeconfig")" = "shop" ]
   [ ! -s "$GITHUB_ENV" ]
+}
+
+@test "trusts the CA of the input ca-certificate for OpenBao and writes the CA into the kubeconfig" {
+  start_tls_mock
+  export DROVER_OPENBAO_URL="$MOCK_TLS_URL"
+  DROVER_CA_CERTIFICATE=$(cat "$TLS_DIR/ca.pem")
+  export DROVER_CA_CERTIFICATE
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(request 2 | jq -r .path)" = "/v1/auth/jwt/github/login" ]
+  [ "$(request 3 | jq -r .path)" = "/v1/kubernetes/c-m-4x2kq7bd/creds/p-abc12-project-member" ]
+  [ "$(request_count)" -eq 3 ]
+  kubeconfig=$(output_value kubeconfig)
+  [ "$(jq -r '.clusters[0].cluster["certificate-authority-data"]' "$kubeconfig" | base64 -d)" = "$DROVER_CA_CERTIFICATE" ]
+  [ "$(jq -r '.clusters[0].cluster | has("insecure-skip-tls-verify")' "$kubeconfig")" = "false" ]
+}
+
+@test "does not verify the certificate of OpenBao with insecure-skip-tls-verify, and writes the flag into the kubeconfig" {
+  start_tls_mock
+  export DROVER_OPENBAO_URL="$MOCK_TLS_URL"
+  export DROVER_INSECURE_SKIP_TLS_VERIFY="true"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(request_count)" -eq 3 ]
+  kubeconfig=$(output_value kubeconfig)
+  [ "$(jq -r '.clusters[0].cluster["insecure-skip-tls-verify"]' "$kubeconfig")" = "true" ]
+  [ "$(jq -r '.clusters[0].cluster | has("certificate-authority-data")' "$kubeconfig")" = "false" ]
+}
+
+@test "fails when OpenBao has a certificate of a CA that the runner does not trust" {
+  start_tls_mock
+  export DROVER_OPENBAO_URL="$MOCK_TLS_URL"
+  run "$SCRIPT"
+  [ "$status" -eq 1 ]
+  grep -q "^::error::The login request to $MOCK_TLS_URL failed (curl exit code 60).$" <<<"$output"
+  [ "$(request_count)" -eq 1 ]
+}
+
+@test "does not use ca-certificate or insecure-skip-tls-verify for the OIDC request" {
+  start_tls_mock
+  export ACTIONS_ID_TOKEN_REQUEST_URL="$MOCK_TLS_URL/oidc?api-version=2.0"
+  DROVER_CA_CERTIFICATE=$(cat "$TLS_DIR/ca.pem")
+  export DROVER_CA_CERTIFICATE
+  run "$SCRIPT"
+  [ "$status" -eq 1 ]
+  grep -q "^::error::The OIDC token request to GitHub failed (curl exit code 60).$" <<<"$output"
+
+  unset DROVER_CA_CERTIFICATE
+  export DROVER_INSECURE_SKIP_TLS_VERIFY="true"
+  run "$SCRIPT"
+  [ "$status" -eq 1 ]
+  grep -q "^::error::The OIDC token request to GitHub failed (curl exit code 60).$" <<<"$output"
+  [ "$(request_count)" -eq 0 ]
+}
+
+@test "rejects ca-certificate together with insecure-skip-tls-verify" {
+  DROVER_CA_CERTIFICATE=$(cat "$TLS_DIR/ca.pem")
+  export DROVER_CA_CERTIFICATE
+  export DROVER_INSECURE_SKIP_TLS_VERIFY="true"
+  run "$SCRIPT"
+  [ "$status" -eq 1 ]
+  grep -q "^::error::Set the input ca-certificate or the input insecure-skip-tls-verify, not both. kubectl does not accept a kubeconfig with both.$" <<<"$output"
+  [ "$(request_count)" -eq 0 ]
+}
+
+@test "rejects a ca-certificate that is not PEM, and an insecure-skip-tls-verify value outside true and false" {
+  export DROVER_CA_CERTIFICATE="$TLS_DIR/ca.pem"
+  run "$SCRIPT"
+  [ "$status" -eq 1 ]
+  grep -q "^::error::The input ca-certificate is not valid. The value must be one or more PEM certificates, or empty.$" <<<"$output"
+
+  DROVER_CA_CERTIFICATE="$(cat "$TLS_DIR/ca.pem" "$TLS_DIR/server.key")"
+  run "$SCRIPT"
+  [ "$status" -eq 1 ]
+  grep -q "^::error::The input ca-certificate is not valid." <<<"$output"
+
+  unset DROVER_CA_CERTIFICATE
+  export DROVER_INSECURE_SKIP_TLS_VERIFY="yes"
+  run "$SCRIPT"
+  [ "$status" -eq 1 ]
+  grep -q "^::error::The input insecure-skip-tls-verify is not valid. The value must be true or false.$" <<<"$output"
+  [ "$(request_count)" -eq 0 ]
 }
 
 @test "appends the audience to a request URL without a query" {

@@ -52,6 +52,17 @@ inputs:
     description: With `true`, the later steps of the job get `KUBECONFIG` with the path of the kubeconfig.
     required: false
     default: "true"
+  ca-certificate:
+    description: >-
+      The PEM certificate of the private CA that signed the TLS certificates of OpenBao and Rancher. curl
+      uses it for the requests to OpenBao. The action writes it into the kubeconfig for Rancher.
+    required: false
+  insecure-skip-tls-verify:
+    description: >-
+      With `true`, curl and kubectl do not verify the TLS certificates of OpenBao and Rancher. Do not set
+      it together with `ca-certificate`.
+    required: false
+    default: "false"
 
 outputs:
   kubeconfig:
@@ -85,4 +96,6 @@ runs:
         DROVER_NAMESPACE: ${{ inputs.namespace }}
         DROVER_KUBECONFIG: ${{ inputs.kubeconfig }}
         DROVER_EXPORT_KUBECONFIG: ${{ inputs.export-kubeconfig }}
+        DROVER_CA_CERTIFICATE: ${{ inputs.ca-certificate }}
+        DROVER_INSECURE_SKIP_TLS_VERIFY: ${{ inputs.insecure-skip-tls-verify }}
       run: "$GITHUB_ACTION_PATH/scripts/login.sh"
