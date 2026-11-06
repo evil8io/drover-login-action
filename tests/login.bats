@@ -101,7 +101,7 @@ teardown() {
   [ "$(jq -r '.clusters[0].cluster | has("insecure-skip-tls-verify")' "$kubeconfig")" = "false" ]
 }
 
-@test "removes the CR characters and the white space around ca-certificate" {
+@test "removes each CR character and the leading and trailing white space from ca-certificate" {
   start_tls_mock
   export DROVER_OPENBAO_URL="$MOCK_TLS_URL"
   DROVER_CA_CERTIFICATE=$'\n  '"$(sed 's/$/\r/' "$TLS_DIR/ca.pem")"$'\r\n\n'
@@ -142,7 +142,7 @@ teardown() {
   [ "$(jq -r '.clusters[0].cluster | has("certificate-authority-data")' "$kubeconfig")" = "false" ]
 }
 
-@test "fails when OpenBao has a certificate of a CA that the runner does not trust" {
+@test "fails when the CA of the OpenBao certificate is not in the CA store of the runner" {
   start_tls_mock
   export DROVER_OPENBAO_URL="$MOCK_TLS_URL"
   run "$SCRIPT"
@@ -174,11 +174,11 @@ teardown() {
   export DROVER_INSECURE_SKIP_TLS_VERIFY="true"
   run "$SCRIPT"
   [ "$status" -eq 1 ]
-  grep -q "^::error::Set the input ca-certificate or the input insecure-skip-tls-verify, not both. kubectl does not accept a kubeconfig with both.$" <<<"$output"
+  grep -q "^::error::Set the input ca-certificate or the input insecure-skip-tls-verify. Do not set both, because kubectl does not accept a kubeconfig with both.$" <<<"$output"
   [ "$(request_count)" -eq 0 ]
 }
 
-@test "rejects a ca-certificate that is not PEM, and an insecure-skip-tls-verify value outside true and false" {
+@test "rejects a ca-certificate that is not one or more PEM certificates, and an insecure-skip-tls-verify value outside true and false" {
   export DROVER_CA_CERTIFICATE="$TLS_DIR/ca.pem"
   run "$SCRIPT"
   [ "$status" -eq 1 ]

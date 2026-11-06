@@ -86,7 +86,8 @@ jobs:
           test "$(sed -n 1p "$MOCK_LOG" | jq -r .jwt_claims.repository)" = "$GITHUB_REPOSITORY"
           test "$(sed -n 2p "$MOCK_LOG" | jq -r .body.kubernetes_namespace)" = drover-c-m-mock-p-mock
 
-      # The second mock server answers HTTPS as OpenBao and as Rancher, with a certificate of a test CA.
+      # The second mock server answers requests over HTTPS, with a server certificate of a test CA. Its URL
+      # is the openbao-url and the rancher-url of the next two steps.
       - name: Start the TLS mock server
         id: tls
         env:
@@ -134,7 +135,7 @@ jobs:
           export-kubeconfig: "false"
           insecure-skip-tls-verify: "true"
 
-      # The mock answers HTTP 404 to a request of kubectl. kubectl reports NotFound only after a TLS handshake.
+      # The mock answers HTTP 404 to a request of kubectl. kubectl reports NotFound only after a successful TLS handshake.
       - name: Check the TLS handshake of kubectl with each kubeconfig
         run: |
           for name in ca insecure; do
@@ -142,5 +143,5 @@ jobs:
               echo "::error::kubectl got a success response from the mock with the kubeconfig $name."
               exit 1
             fi
-            grep -q NotFound <<<"$output" || { echo "::error::kubectl with the kubeconfig $name: $output"; exit 1; }
+            grep -q NotFound <<<"$output" || { echo "::error::kubectl did not report NotFound with the kubeconfig $name: $output"; exit 1; }
           done

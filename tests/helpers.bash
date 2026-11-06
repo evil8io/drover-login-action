@@ -23,8 +23,9 @@ start_mock() {
   export MOCK_URL
 }
 
-# Starts a second mock server that answers HTTPS, with the certificate of make_certificates. The
-# server writes to the same log as the server of start_mock.
+# Starts a second mock server that answers requests over HTTPS, with the files server.pem and
+# server.key of make_certificates. The server writes to the log file MOCK_LOG of start_mock. Call
+# start_mock first.
 start_tls_mock() {
   local port_file="$BATS_TEST_TMPDIR/mock-tls.port"
   MOCK_PORT_FILE="$port_file" MOCK_TLS_CERT="$TLS_DIR/server.pem" MOCK_TLS_KEY="$TLS_DIR/server.key" \
@@ -52,8 +53,9 @@ stop_mock() {
   done
 }
 
-# Writes a test CA and a server certificate for 127.0.0.1, signed by that CA, to the directory
-# TLS_DIR. The files are ca.pem, server.pem, and server.key.
+# Writes a test CA and a server certificate for 127.0.0.1, signed by that CA, to
+# $BATS_FILE_TMPDIR/tls. Exports that directory as TLS_DIR. The tests use the files ca.pem,
+# server.pem, and server.key.
 make_certificates() {
   export TLS_DIR="$BATS_FILE_TMPDIR/tls"
   mkdir -p "$TLS_DIR"

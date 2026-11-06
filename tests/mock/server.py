@@ -12,7 +12,7 @@ reads at each request. The document can contain these keys:
 - oidc_body: when the key is set, the OIDC endpoint returns this text as HTML with the status 200.
 
 When the variables MOCK_TLS_CERT and MOCK_TLS_KEY contain the paths of a PEM certificate and its
-key, the server answers HTTPS instead of HTTP.
+key, the server answers requests over HTTPS instead of HTTP.
 """
 
 import base64

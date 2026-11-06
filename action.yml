@@ -60,8 +60,9 @@ inputs:
     required: false
   insecure-skip-tls-verify:
     description: >-
-      With `true`, curl and kubectl do not verify the TLS certificates of OpenBao and Rancher. Do not set
-      it together with `ca-certificate`.
+      With `true`, curl does not verify the TLS certificate of OpenBao. The action also writes
+      `insecure-skip-tls-verify: true` into the kubeconfig for Rancher. Do not set it together with
+      `ca-certificate`.
     required: false
     default: "false"
 

@@ -73,7 +73,7 @@ check ca-certificate "$ca_certificate" "^(${pem_block}("$'\n'"+${pem_block})*)?$
 check insecure-skip-tls-verify "$insecure_skip_tls_verify" '^(true|false)$' 'true or false'
 [[ -d "$kubeconfig" ]] && fail "The input kubeconfig is a directory."
 if [[ -n "$ca_certificate" && "$insecure_skip_tls_verify" == true ]]; then
-  fail "Set the input ca-certificate or the input insecure-skip-tls-verify, not both. kubectl does not accept a kubeconfig with both."
+  fail "Set the input ca-certificate or the input insecure-skip-tls-verify. Do not set both, because kubectl does not accept a kubeconfig with both."
 fi
 
 if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]]; then
