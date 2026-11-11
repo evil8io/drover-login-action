@@ -111,7 +111,7 @@ The cluster ID and the project ID are in the output of `kubectl get projects.man
 
 ## The token
 
-- With the token, a client has the Kubernetes rights of the project role in every namespace of the project: `admin` for `project-owner`, `edit` for `project-member`, and `view` for `read-only`. With `project-owner` or `project-member`, the client can also create a namespace in the project.
+- With the token, a client has the Kubernetes rights of the project role in every namespace of the project. These rights are `admin` for `project-owner`, `edit` for `project-member`, and `view` for `read-only`. With `project-owner` or `project-member`, the client can also create a namespace in the project.
 - The default lifetime of a token on the platform is 15 minutes. When a job needs the token for longer than the default lifetime, set `ttl`, up to the maximum of the platform. You can also run the action again.
 - A single token cannot be revoked before it expires. An admin of the platform can delete the ServiceAccount of the project role. Kubernetes then rejects every token of that ServiceAccount. Do not set a `ttl` above the time that the job needs.
 - The runner masks the OIDC token, the OpenBao token of the login, and the ServiceAccount token in the log. The file mode of the kubeconfig is `0600`.
