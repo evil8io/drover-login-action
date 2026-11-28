@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.0](https://github.com/evil8io/drover-login-action/compare/v0.2.1...v0.3.0) (2026-11-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* run the action as a JavaScript action on Node 24 ([#20](https://github.com/evil8io/drover-login-action/issues/20))
+
+### Features
+
+* run the action as a JavaScript action on Node 24 ([#20](https://github.com/evil8io/drover-login-action/issues/20)) ([005f231](https://github.com/evil8io/drover-login-action/commit/005f231afcf3b9f0fcca63ec519c2fbadb2a9e45))
+
+
+### Miscellaneous Chores
+
+* **deps:** update dependency jdx/mise to v2026.11.14 ([#19](https://github.com/evil8io/drover-login-action/issues/19)) ([e59f591](https://github.com/evil8io/drover-login-action/commit/e59f5917ecd343c559ebcad74dabdde49305e0a8))
+
 ## [0.2.1](https://github.com/evil8io/drover-login-action/compare/v0.2.0...v0.2.1) (2026-11-25)
 
 
