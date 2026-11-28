@@ -1,8 +1,8 @@
 ---
 name: drover login
 description: >-
-  Log in to OpenBao with the GitHub OIDC token of the workflow. Write a kubeconfig with a short-lived token
-  of a project ServiceAccount of a Rancher cluster.
+  Log in to OpenBao with the GitHub OIDC token of the workflow. Write a kubeconfig with a short-lived
+  ServiceAccount token for a Rancher project.
 author: evil8io
 
 branding:
@@ -11,10 +11,10 @@ branding:
 
 inputs:
   openbao-url:
-    description: The URL of OpenBao, for example `https://rancher-tokens.example.com`.
+    description: The `https` URL of OpenBao, without a path, for example `https://rancher-tokens.example.com`.
     required: true
   rancher-url:
-    description: The URL of Rancher, for example `https://rancher.example.com`.
+    description: The `https` URL of Rancher, without a path, for example `https://rancher.example.com`.
     required: true
   cluster:
     description: The ID of the Rancher cluster, for example `c-m-4x2kq7bd`.
@@ -34,8 +34,8 @@ inputs:
     default: github
   audience:
     description: >-
-      The audience of the OIDC token. The default is the OpenBao URL, the default audience of the login
-      roles of the drover chart.
+      The audience of the OIDC token. The default is the OpenBao URL, which is also the default of
+      `global.broker.audience` in the drover chart.
     required: false
   ttl:
     description: >-
@@ -49,18 +49,20 @@ inputs:
     description: The absolute path of the kubeconfig. The default is a new file under `RUNNER_TEMP`.
     required: false
   export-kubeconfig:
-    description: With `true`, the later steps of the job get `KUBECONFIG` with the path of the kubeconfig.
+    description: >-
+      With `true`, the action sets `KUBECONFIG` to the path of the kubeconfig for the later steps of the
+      job.
     required: false
     default: "true"
   ca-certificate:
     description: >-
       One or more PEM certificates of the private CA that signed the TLS certificates of OpenBao and
-      Rancher. curl uses the certificates for the requests to OpenBao. The action writes the certificates
-      into the kubeconfig for Rancher.
+      Rancher. For the requests to OpenBao, the action trusts only these certificates. The action writes
+      the certificates into the kubeconfig for Rancher.
     required: false
   insecure-skip-tls-verify:
     description: >-
-      With `true`, curl does not verify the TLS certificate of OpenBao. The action also writes
+      With `true`, the action does not verify the TLS certificate of OpenBao. The action also writes
       `insecure-skip-tls-verify: true` into the kubeconfig for Rancher. Do not set it together with
       `ca-certificate`.
     required: false
@@ -69,35 +71,13 @@ inputs:
 outputs:
   kubeconfig:
     description: The path of the kubeconfig.
-    value: ${{ steps.login.outputs.kubeconfig }}
   server:
     description: The URL of the cluster API through Rancher.
-    value: ${{ steps.login.outputs.server }}
   token:
     description: The ServiceAccount token. The runner masks it in the log.
-    value: ${{ steps.login.outputs.token }}
   expires-in:
     description: The lifetime of the token in seconds.
-    value: ${{ steps.login.outputs.expires-in }}
 
 runs:
-  using: composite
-  steps:
-    - id: login
-      shell: bash
-      env:
-        DROVER_OPENBAO_URL: ${{ inputs.openbao-url }}
-        DROVER_RANCHER_URL: ${{ inputs.rancher-url }}
-        DROVER_CLUSTER: ${{ inputs.cluster }}
-        DROVER_PROJECT: ${{ inputs.project }}
-        DROVER_ROLE: ${{ inputs.role }}
-        DROVER_STATEMENT: ${{ inputs.statement }}
-        DROVER_ISSUER: ${{ inputs.issuer }}
-        DROVER_AUDIENCE: ${{ inputs.audience }}
-        DROVER_TTL: ${{ inputs.ttl }}
-        DROVER_NAMESPACE: ${{ inputs.namespace }}
-        DROVER_KUBECONFIG: ${{ inputs.kubeconfig }}
-        DROVER_EXPORT_KUBECONFIG: ${{ inputs.export-kubeconfig }}
-        DROVER_CA_CERTIFICATE: ${{ inputs.ca-certificate }}
-        DROVER_INSECURE_SKIP_TLS_VERIFY: ${{ inputs.insecure-skip-tls-verify }}
-      run: "$GITHUB_ACTION_PATH/scripts/login.sh"
+  using: node24
+  main: dist/main.js

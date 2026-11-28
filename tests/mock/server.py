@@ -1,15 +1,25 @@
 #!/usr/bin/env python3
-"""This file is a mock of the GitHub OIDC endpoint and of OpenBao, for the tests of the action.
+"""Mocks the GitHub OIDC endpoint and OpenBao for the tests of the action.
 
-The server writes its port to the file MOCK_PORT_FILE. It writes one JSON line per request to
-the file MOCK_LOG. The file MOCK_CONFIG, when it exists, is a JSON document that the server
-reads at each request. The document can contain these keys:
+The server appends one JSON line per request to MOCK_LOG. At each request, the server reads the
+JSON file MOCK_CONFIG, when it exists. The document can contain these keys:
 
 - request_token: the bearer token that the OIDC endpoint expects. Default: request-token.
 - client_token: the OpenBao token that the login endpoint returns. Default: hvb.mock-client-token.
 - oidc_status, login_status, creds_status: the HTTP status of each endpoint. Default: 200.
-  With another status, the endpoint returns an error document.
+  With another status, the endpoint returns an error document. With the status 101, the response
+  also has the headers Connection: Upgrade and Upgrade: x, as a server that switches the protocol.
 - oidc_body: when the key is set, the OIDC endpoint returns this text as HTML with the status 200.
+- login_redirect: when the key is set, the login endpoint answers with the status 302 and an empty
+  JSON object as the body. The Location header of the response contains this value.
+- oidc_padding: when the key is set to a number, the OIDC endpoint adds the key padding with a
+  string of this length to its 200 response.
+- lease_duration: when the key is set, the creds endpoint returns this value, of any JSON type, as
+  lease_duration instead of the computed number.
+- service_account_token: the token that the creds endpoint returns. Default: SA_TOKEN, as in
+  helpers.bash.
+- login_errors: when the key is set to a list, the login endpoint returns this list as errors
+  instead of the default list. The server uses the key only when login_status is not 200.
 
 When the variables MOCK_TLS_CERT and MOCK_TLS_KEY contain the paths of a PEM certificate and its
 key, the server answers requests over HTTPS instead of HTTP.
@@ -34,6 +44,11 @@ DEFAULTS = {
     "login_status": 200,
     "creds_status": 200,
     "oidc_body": None,
+    "login_redirect": None,
+    "oidc_padding": None,
+    "lease_duration": None,
+    "service_account_token": None,
+    "login_errors": None,
 }
 
 
@@ -53,8 +68,6 @@ def fake_jwt(claims):
 
 
 def lease_seconds(ttl):
-    """Returns the lease of a token request: the ttl of the request, or 900 when the request does
-    not have a ttl."""
     if not ttl:
         return 900
     units = {"s": 1, "m": 60, "h": 3600}
@@ -91,6 +104,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def answer_raw(self, status, data, content_type):
         self.send_response(status)
+        if status == 101:
+            self.send_header("Connection", "Upgrade")
+            self.send_header("Upgrade", "x")
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
@@ -114,9 +130,10 @@ class Handler(BaseHTTPRequestHandler):
                 settings["oidc_status"], {"message": "the OIDC endpoint failed"}
             )
         audience = parse_qs(parts.query).get("audience", [""])[0]
-        return self.answer(
-            200, {"value": fake_jwt({"aud": audience, "repository_id": "1"})}
-        )
+        document = {"value": fake_jwt({"aud": audience, "repository_id": "1"})}
+        if settings["oidc_padding"] is not None:
+            document["padding"] = "x" * settings["oidc_padding"]
+        return self.answer(200, document)
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", "0"))
@@ -137,12 +154,20 @@ class Handler(BaseHTTPRequestHandler):
                 or not body.get("jwt")
             ):
                 return self.answer(400, {"errors": ["missing role or jwt"]})
+            if settings["login_redirect"] is not None:
+                self.send_response(302)
+                self.send_header("Location", settings["login_redirect"])
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+                return None
             if settings["login_status"] != 200:
                 # This is the multi-line format of an OpenBao error.
-                return self.answer(
-                    settings["login_status"],
-                    {"errors": ["1 error occurred:\n\t* permission denied\n\n"]},
-                )
+                errors = settings["login_errors"]
+                if errors is None:
+                    errors = ["1 error occurred:\n\t* permission denied\n\n"]
+                return self.answer(settings["login_status"], {"errors": errors})
             return self.answer(
                 200,
                 {
@@ -166,16 +191,22 @@ class Handler(BaseHTTPRequestHandler):
                     settings["creds_status"], {"errors": ["the role does not exist"]}
                 )
             name = creds.group("name")
+            lease = lease_seconds(body.get("ttl"))
+            if settings["lease_duration"] is not None:
+                lease = settings["lease_duration"]
+            sa_token = settings["service_account_token"]
+            if sa_token is None:
+                sa_token = SA_TOKEN
             return self.answer(
                 200,
                 {
-                    "lease_duration": lease_seconds(body.get("ttl")),
+                    "lease_duration": lease,
                     "data": {
                         "service_account_name": name.split("-", 1)[1]
                         if "-" in name
                         else name,
                         "service_account_namespace": body["kubernetes_namespace"],
-                        "service_account_token": SA_TOKEN,
+                        "service_account_token": sa_token,
                     },
                 },
             )

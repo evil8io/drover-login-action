@@ -9,15 +9,21 @@ on:
 permissions:
   contents: read
 
+# Each push has its own group. In a shared group, GitHub cancels a run that waits when a newer run
+# is queued. A release needs the `ci` run of its release commit.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      # In this job, mise runs the TypeScript compiler from npm. We keep the token of the job out of the
+      # git config, where each process of the job can read it.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - id: mise
         run: echo "version=$(cat .mise-version)" >> "$GITHUB_OUTPUT"
@@ -29,12 +35,26 @@ jobs:
 
       - run: mise run lint
 
+      # The runner starts dist/main.js, not the TypeScript source. A release must thus contain the build
+      # of its own source. With --ignored, git also reports a build file that matches a pattern in
+      # .gitignore.
+      - name: Check that dist/ is the build of src/
+        run: |
+          mise run build
+          if [[ -n "$(git status --porcelain --ignored -- dist)" ]]; then
+            git status --short --ignored -- dist
+            git diff -- dist
+            echo "::error::dist/ is not the build of src/. Run 'mise run build'. Then commit dist/."
+            exit 1
+          fi
+
       - run: mise run test
 
-  # This job runs the action itself, with a real OIDC token, against the mock server. GitHub does
-  # not give an OIDC token to a workflow run for a pull request from a fork. For this reason, the
-  # job runs for a pull request from this repository only.
+  # In this job, the runner runs the action with a real OIDC token. GitHub does not give an OIDC
+  # token to a workflow run for a pull request from a fork. The job needs `check`, so that the runner
+  # starts only a dist/ that is the build of src/.
   action:
+    needs: check
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
@@ -86,8 +106,6 @@ jobs:
           test "$(sed -n 1p "$MOCK_LOG" | jq -r .jwt_claims.repository)" = "$GITHUB_REPOSITORY"
           test "$(sed -n 2p "$MOCK_LOG" | jq -r .body.kubernetes_namespace)" = drover-c-m-mock-p-mock
 
-      # The second mock server answers requests over HTTPS, with a server certificate of a test CA. Its URL
-      # is the openbao-url and the rancher-url of the next two steps.
       - name: Start the TLS mock server
         id: tls
         env:

@@ -1,5 +1,3 @@
-# This file contains the shared setup of the bats tests.
-
 SA_TOKEN="eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJtb2NrIn0.mock-service-account-token"
 export SA_TOKEN
 
@@ -23,9 +21,8 @@ start_mock() {
   export MOCK_URL
 }
 
-# Starts a second mock server that answers requests over HTTPS, with the files server.pem and
-# server.key of make_certificates. The server writes to the log file MOCK_LOG of start_mock. Call
-# start_mock first.
+# Starts a second mock server that answers over HTTPS. The server uses the log and the config that
+# start_mock sets. Call start_mock first.
 start_tls_mock() {
   local port_file="$BATS_TEST_TMPDIR/mock-tls.port"
   MOCK_PORT_FILE="$port_file" MOCK_TLS_CERT="$TLS_DIR/server.pem" MOCK_TLS_KEY="$TLS_DIR/server.key" \
@@ -43,9 +40,27 @@ start_tls_mock() {
   export MOCK_TLS_URL
 }
 
+# Starts a forward proxy for CONNECT requests.
+start_proxy() {
+  local port_file="$BATS_TEST_TMPDIR/proxy.port"
+  export PROXY_LOG="$BATS_TEST_TMPDIR/proxy.log"
+  PROXY_PORT_FILE="$port_file" python3 "$BATS_TEST_DIRNAME/mock/proxy.py" 3>&- &
+  PROXY_PID=$!
+  for _ in $(seq 1 50); do
+    [[ -s "$port_file" ]] && break
+    sleep 0.1
+  done
+  [[ -s "$port_file" ]] || {
+    echo "the proxy did not start" >&2
+    return 1
+  }
+  PROXY_URL="http://127.0.0.1:$(cat "$port_file")"
+  export PROXY_URL
+}
+
 stop_mock() {
   local pid
-  for pid in "${MOCK_PID:-}" "${MOCK_TLS_PID:-}"; do
+  for pid in "${MOCK_PID:-}" "${MOCK_TLS_PID:-}" "${PROXY_PID:-}"; do
     if [[ -n "$pid" ]]; then
       kill "$pid" 2>/dev/null || true
       wait "$pid" 2>/dev/null || true
@@ -53,9 +68,7 @@ stop_mock() {
   done
 }
 
-# Writes a test CA and a server certificate for 127.0.0.1, signed by that CA, to
-# $BATS_FILE_TMPDIR/tls. Exports that directory as TLS_DIR. The tests use the files ca.pem,
-# server.pem, and server.key.
+# Writes a test CA and a server certificate for 127.0.0.1, signed by that CA, to TLS_DIR.
 make_certificates() {
   export TLS_DIR="$BATS_FILE_TMPDIR/tls"
   mkdir -p "$TLS_DIR"
@@ -69,12 +82,28 @@ make_certificates() {
     -set_serial 1 -days 1 -extfile "$TLS_DIR/server.ext" -out "$TLS_DIR/server.pem" 2>/dev/null
 }
 
-# Writes the mock config. The argument is a JSON document.
+# Writes the mock config. The keys are in mock/server.py.
 mock_config() {
   echo "$1" > "$MOCK_CONFIG"
 }
 
-# Prepares the environment of a run of the script, as in a composite step of the action.
+# bats loads this file in a function. Without -g, bash makes INPUTS local to that function.
+declare -gA INPUTS=()
+
+input() {
+  INPUTS["$1"]="$2"
+}
+
+# Runs the action as the runner does. The runner passes the input <name> as INPUT_<NAME> and keeps
+# the dashes. Bash cannot export such a name, so the function uses env.
+action() {
+  local name args=()
+  for name in "${!INPUTS[@]}"; do
+    args+=("INPUT_${name^^}=${INPUTS[$name]}")
+  done
+  env "${args[@]}" "${ACTION_NODE:-node}" "$BATS_TEST_DIRNAME/../dist/main.js"
+}
+
 login_env() {
   export HOME="$BATS_TEST_TMPDIR/home"
   mkdir -p "$HOME"
@@ -85,39 +114,18 @@ login_env() {
   : > "$GITHUB_ENV"
   export ACTIONS_ID_TOKEN_REQUEST_URL="$MOCK_URL/oidc?api-version=2.0"
   export ACTIONS_ID_TOKEN_REQUEST_TOKEN="request-token"
-  export DROVER_OPENBAO_URL="$MOCK_URL"
-  export DROVER_RANCHER_URL="https://rancher.example.com/"
-  export DROVER_CLUSTER="c-m-4x2kq7bd"
-  export DROVER_PROJECT="p-abc12"
-  export DROVER_ROLE="project-member"
-  export DROVER_STATEMENT="deploy-main"
-  unset DROVER_ISSUER DROVER_AUDIENCE DROVER_TTL DROVER_NAMESPACE DROVER_KUBECONFIG DROVER_EXPORT_KUBECONFIG \
-    DROVER_CA_CERTIFICATE DROVER_INSECURE_SKIP_TLS_VERIFY
-}
-
-# Puts a jq wrapper and a curl wrapper in front of PATH. Each wrapper fails when an argument
-# contains a token. The mock JWT and the ServiceAccount token start with eyJ. The OpenBao token
-# starts with hvb.
-guard_command_lines() {
-  local dir="$BATS_TEST_TMPDIR/bin" tool real
-  mkdir -p "$dir"
-  for tool in jq curl; do
-    real=$(command -v "$tool")
-    cat > "$dir/$tool" <<EOF
-#!/usr/bin/env bash
-for arg in "\$@"; do
-  case "\$arg" in
-    *eyJ* | *hvb.*)
-      echo "a token is on the command line of $tool" >&2
-      exit 99
-      ;;
-  esac
-done
-exec "$real" "\$@"
-EOF
-    chmod +x "$dir/$tool"
-  done
-  export PATH="$dir:$PATH"
+  # A test result must not depend on the proxy variables of the developer's shell.
+  unset HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy NODE_USE_ENV_PROXY
+  INPUTS=()
+  input openbao-url "$MOCK_URL"
+  input rancher-url "https://rancher.example.com/"
+  input cluster "c-m-4x2kq7bd"
+  input project "p-abc12"
+  input role "project-member"
+  input statement "deploy-main"
+  input issuer "github"
+  input export-kubeconfig "true"
+  input insecure-skip-tls-verify "false"
 }
 
 # request <n> prints the JSON of the n-th request in the mock log.
@@ -125,7 +133,6 @@ request() {
   sed -n "${1}p" "$MOCK_LOG"
 }
 
-# request_count prints the number of requests in the mock log.
 request_count() {
   if [[ -e "$MOCK_LOG" ]]; then
     wc -l < "$MOCK_LOG"

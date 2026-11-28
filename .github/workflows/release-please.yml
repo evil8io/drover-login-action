@@ -4,25 +4,77 @@ on:
   push:
     branches:
       - main
+  workflow_run:
+    workflows:
+      - ci
+    types:
+      - completed
+    branches:
+      - main
 
 concurrency: release-please
 
 permissions:
+  actions: read
   contents: write
   pull-requests: write
 
 jobs:
-  release:
+  # After a push, release-please opens or updates the release pull request. It does not create a
+  # release here, because the `ci` run of the push is not complete.
+  pull-request:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-release: true
+
+  # The branch of a pull request from a fork can also have the name `main`. Thus the job starts only
+  # for a `ci` run of a push to `main` of this repository.
+  release:
+    if: >-
+      github.event_name == 'workflow_run'
+      && github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_branch == 'main'
+      && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      # release-please puts the release tag on the merge commit of each release pull request with the
+      # label `autorelease: pending`. We let release-please create the release only when each of these
+      # commits has a `ci` run that passed. We filter the label in jq. With `--label`, gh reads the
+      # search API and not the list of pull requests.
+      - id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          commits=$(gh pr list --repo "$GITHUB_REPOSITORY" --state merged --base main --limit 200 \
+            --json mergeCommit,labels \
+            --jq '.[] | select(any(.labels[]; .name == "autorelease: pending")) | .mergeCommit.oid')
+          release=false
+          if [[ -n "$commits" ]]; then
+            release=true
+            for commit in $commits; do
+              passed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$commit&event=push&status=success" \
+                --jq .total_count)
+              if [[ "$passed" -eq 0 ]]; then
+                echo "::warning::The release commit $commit does not have a ci run that passed. release-please does not create the release."
+                release=false
+              fi
+            done
+          fi
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
       - id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          skip-github-release: ${{ steps.gate.outputs.release != 'true' }}
 
-      # Moves the tag v<major>, for example v0, to the release commit, so that a workflow can use the
-      # action as @v<major>.
       - if: steps.release.outputs.release_created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}

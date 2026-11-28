@@ -32,6 +32,22 @@
         "jdx/mise"
       ],
       "minimumReleaseAge": "3 days"
+    },
+    {
+      "allowedVersions": "<25",
+      "description": "Keeps Node and its types at version 24. The runner starts the action with Node 24, the runtime node24 in action.yml.",
+      "matchDepNames": [
+        "node",
+        "@types/node"
+      ]
+    },
+    {
+      "description": "Renovate waits 3 days after the release of an npm package or of Node before the update.",
+      "matchDatasources": [
+        "npm",
+        "node-version"
+      ],
+      "minimumReleaseAge": "3 days"
     }
   ],
   "rebaseWhen": "behind-base-branch"
