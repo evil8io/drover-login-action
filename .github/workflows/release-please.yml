@@ -21,8 +21,6 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # Moves the tag v<major>, for example v0, to the release commit, so that a workflow can use the
-      # action as @v<major>.
       - if: steps.release.outputs.release_created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}

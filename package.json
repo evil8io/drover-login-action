@@ -1,0 +1,10 @@
+{
+  "devDependencies": {
+    "@types/node": "24.19.4",
+    "typescript": "7.0.2"
+  },
+  "license": "Apache-2.0",
+  "name": "drover-login-action",
+  "private": true,
+  "type": "module"
+}
