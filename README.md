@@ -79,8 +79,8 @@ The format of the annotation is in the [README of the drover chart](https://gith
 
 | Input | Required | Default | Description |
 |---|---|---|---|
-| `openbao-url` | yes | | The URL of OpenBao, for example `https://rancher-tokens.example.com`. |
-| `rancher-url` | yes | | The URL of Rancher, for example `https://rancher.example.com`. |
+| `openbao-url` | yes | | The `https` URL of OpenBao, without a path, for example `https://rancher-tokens.example.com`. |
+| `rancher-url` | yes | | The `https` URL of Rancher, without a path, for example `https://rancher.example.com`. |
 | `cluster` | yes | | The ID of the Rancher cluster, for example `c-m-4x2kq7bd`. |
 | `project` | yes | | The ID of the Rancher project, for example `p-abc12`. |
 | `role` | yes | | The project role of the token: `project-owner`, `project-member`, or `read-only`. |

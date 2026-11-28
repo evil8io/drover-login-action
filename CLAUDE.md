@@ -19,6 +19,6 @@ Do not write a customer name, an environment name, a private repository name, an
 
 ## Releases
 
-- On a release-please pull request, GitHub shows a failed `ci` run and a failed `pr-title` run, each with zero jobs. The release-please bot is an outside actor. For this reason, GitHub gives the runs the status `action_required`. When the runs expire, GitHub changes the status to `failure`. Ignore these failed runs. The `ci` run on `main` must pass.
-- The required checks of the ruleset `main` thus never pass on the release pull request. Merge the release pull request with `gh pr merge --admin`. GitHub lets the admin role bypass the ruleset for a pull request.
-- Before 1.0, release-please bumps the minor version for a `feat!` commit, because it runs with `bump-minor-pre-major`. In the release workflow, `gh api` moves the tag `v0` to each release, also across a breaking change. The README contains a note about this for the users.
+- Approve or rerun the `ci` run and the `pr-title` run of a release-please pull request before the merge. For a pull request from a workflow with `GITHUB_TOKEN`, the events "create workflow runs that require approval" (GitHub docs, page "Events that trigger workflows"). The required checks pass only after these runs.
+- When the `ci` run of a release commit on `main` fails, rerun that run. release-please creates the release only after that run passes. Until then, release-please also does not open the next release pull request.
+- Do not treat a failed run with zero jobs on a merged release pull request as a CI failure. When a release pull request is merged before the approval, GitHub ends its runs with `failure`.

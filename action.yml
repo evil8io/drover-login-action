@@ -11,10 +11,10 @@ branding:
 
 inputs:
   openbao-url:
-    description: The URL of OpenBao, for example `https://rancher-tokens.example.com`.
+    description: The `https` URL of OpenBao, without a path, for example `https://rancher-tokens.example.com`.
     required: true
   rancher-url:
-    description: The URL of Rancher, for example `https://rancher.example.com`.
+    description: The `https` URL of Rancher, without a path, for example `https://rancher.example.com`.
     required: true
   cluster:
     description: The ID of the Rancher cluster, for example `c-m-4x2kq7bd`.

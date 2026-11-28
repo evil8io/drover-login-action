@@ -9,8 +9,10 @@ on:
 permissions:
   contents: read
 
+# Each push has its own group. In a shared group, GitHub cancels a run that waits when a newer run
+# is queued. A release needs the `ci` run of its release commit.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -49,8 +51,10 @@ jobs:
       - run: mise run test
 
   # In this job, the runner runs the action with a real OIDC token. GitHub does not give an OIDC
-  # token to a workflow run for a pull request from a fork.
+  # token to a workflow run for a pull request from a fork. The job needs `check`, so that the runner
+  # starts only a dist/ that is the build of src/.
   action:
+    needs: check
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
